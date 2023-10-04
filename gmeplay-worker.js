@@ -44,7 +44,7 @@ async function gmeplay(url, tracknum, audioCtx, settingsObject /*contains LoopOb
 	// to understand the code, you should read about the JavaScript Web Audio API and Emscripten
 	if (url.includes(".vgz")) {
 		try {
-			importScripts("pako.min.js");
+			importScripts("pako/pako.min.js");
 			var vgzbool=true
 		} catch {
 			console.error("vgz file detected, but pako is not present to extract. https://www.jsdelivr.com/package/npm/pako?tab=files ")
