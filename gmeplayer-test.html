@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<head>
+<meta charset=utf-8>
+<title>Game-Music-Emu-WASM</title>
+<meta name=color-scheme content="dark light">
+<meta name=viewport content=width=device-width,initial-scale=1.0>
+<script src=pako.min.js></script>
+<script src=Web-GME-Player.js></script> <!-- remember to set the right script -->
+<script src=gmeplay-function.js></script>
+</head>
+<body>
+<label for="song-select">Choose a song:</label>
+<select id=song-select>
+<option>01 Main Theme.spc</option>
+<option>Dragon Slayer IV - Drasle Family (MSX, PSG).kss</option>
+<option>02 - Data Select (mega drive).vgm</option>
+<option>Fairlight-APrelude.ay</option>
+<option>02 - Data Select.vgz</option>
+<option>Fairlight2-ATrailOfDarkness.ay</option>
+<option>03 - Door Into Summer (32x, drums are the 32x PWM channel).vgm</option>
+<option>GhostsnGoblins (CPC, not ZX).ay</option>
+<option>03 - Door Into Summer.vgz</option>
+<option>Gimmick (5B).nsfe</option>
+<option>07 - Metallic Madness Zone Past (Mega CD).vgm</option>
+<option>Lagrange Point (VRC7).nsfe</option>
+<option>07 - Metallic Madness Zone Past.vgz</option>
+<option>Madou Monogatari 1-2-3 (MSX2)(1990)(Compile).kss</option> <!--128-->
+<option>180.sap</option>
+<option>TP03017.hes</option> <!--1-->
+<option>Akumajou Densetsu (VRC6).nsfe</option>
+<option>Tetris (Bullet Proof Software).kss</option> <!--128-->
+<option>Aleste (MSX)(1988)(Compile).kss</option> <!--129-->
+<option>fds-test.nsfe</option>
+<option>Chronos (beeper).AY</option>
+<option>liquid-sunshine (Namco 163).nsfe</option>
+<option>DMG-AKBJ-JPN.gbs</option>
+<option selected>mmc5-test.nsfe</option>
+<option>5b-test.nsfe</option>
+<option>DMG-BRBJ-JPN.gbs</option>
+<option>Gradius 2 (MSX)(1987)(Konami).kss</option> <!--62-->
+<option>Blaster Master (Sunsoft).nsf</option>
+</select>
+<br>
+<label for="track">Track number:</label>
+<input type="number" id="track" value="0"/>
+<br>
+<fieldset>
+<legend>settingsObject (leave empty to not use)</legend>
+<label for="panningObjectTextarea">panningObject:</label>
+<br>
+<textarea id="panningObjectTextarea" rows="12" cols="20">
+Square 1:-1
+Square 2:1
+Square 3:-1
+Square 4:1</textarea>
+<br>
+<label for="length">length:</label><input type="text" id="length"/>
+<br>
+<fieldset>
+<legend>LoopObject</legend>
+<label><input type="radio" name="exists" id="LoopObjectRadio" checked /> Yes</label>
+<label><input type="radio" name="exists"/> No</label>
+<br>
+<label for="loopStart">loopStart:</label><input type="text" id="loopStart"/>
+<br>
+<label for="loopEnd">loopEnd:</label><input type="text" id="loopEnd"/>
+</fieldset>
+</fieldset>
+<br>
+<button id=gmeplaybut>Play</button>
+<br>
+<button id=gmeplaybutwork>Play Worker</button>
+<script>
+//"use strict";
+var gmeplaybut=document.getElementById("gmeplaybut")
+var gmeplaybutwork=document.getElementById("gmeplaybutwork")
+var songSelect=document.getElementById("song-select")
+var track=document.getElementById("track")
+var panText=document.getElementById("panningObjectTextarea")
+var lengthInput=document.getElementById("length")
+var LoopObjectRadio=document.getElementById("LoopObjectRadio")
+var loopStartInput=document.getElementById("loopStart")
+var loopEndInput=document.getElementById("loopEnd")
+gmeplaybut.addEventListener("click",myclick,{once:true})
+gmeplaybutwork.addEventListener("click",myclick,{once:true})
+function myclick(){
+	if (this.innerHTML=="Play Worker") {
+		var workerbool=true;
+	}
+	this.innerHTML="Playing..."
+	console.log(LoopObjectRadio.checked)
+	var panKeyVal=panText.value;
+	var length=lengthInput.value;
+	var LoopObjectExists=LoopObjectRadio.checked;
+	console.log(LoopObjectExists)
+	var loopStart=loopStartInput.value;
+	var loopEnd=loopEndInput.value;
+	console.log("songSelect.value: "+songSelect.value)
+	if (panKeyVal || length || LoopObjectExists) {
+		var settingsObject={};
+		if (panKeyVal) {
+			panKeyVal=panKeyVal.split("\n");
+			var panningObject={};
+			for (Key of panKeyVal) {
+				panningObject[Key.slice(0, Key.indexOf(":"))]=parseFloat(Key.slice(Key.indexOf(":")+1, Key.length))
+			}
+			settingsObject.panningObject=panningObject;
+		}
+		if (length) {settingsObject.length=parseInt(length)}
+		if (LoopObjectExists) {
+			console.log('LoopObjectExists')
+			settingsObject.LoopObject={};
+			if (loopStart) {settingsObject.LoopObject.loopStart=parseInt(loopStart)}
+			if (loopEnd) {settingsObject.LoopObject.loopEnd=parseInt(loopEnd)}
+		}
+		console.log(settingsObject)
+		if (workerbool) {
+			gmeplayWorker("test-music/"+songSelect.value,parseInt(track.value),settingsObject);
+			gmeplaybut.setAttribute("disabled", "")
+			gmeplaybut.innerHTML="Refresh to enable"
+		} else {
+			gmeplay("test-music/"+songSelect.value,parseInt(track.value),settingsObject);
+			gmeplaybutwork.setAttribute("disabled", "")
+			gmeplaybutwork.innerHTML="Refresh to enable"
+		}
+	} else {
+		if (workerbool) {
+			gmeplayWorker("test-music/"+songSelect.value,parseInt(track.value));
+			gmeplaybut.setAttribute("disabled", "")
+			gmeplaybut.innerHTML="Refresh to enable"
+		} else {
+			gmeplay("test-music/"+songSelect.value,parseInt(track.value));
+			gmeplaybutwork.setAttribute("disabled", "")
+			gmeplaybutwork.innerHTML="Refresh to enable"
+		}
+	}
+}
+
+// pan ay music 
+// Wave 1:-1
+// Wave 2:0
+// Wave 3:1
+</script>
