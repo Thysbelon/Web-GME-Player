@@ -87,6 +87,8 @@ async function gmeplay(url, tracknum, audioCtx, settingsObject /*contains LoopOb
 		["number", "number"],
 		[bufferSize, tracknum/* track number */]
 	)
+	console.log("getting intro length...")
+	var introlength=Module.ccall("getIntroLength","number") // if I place this at the bottom, it errors
 	// if the user defined a loopEnd or a length, overwrite the length obtained from the file with the user's
 	if (LoopObject) {if (LoopObject.loopEnd) {musLength=LoopObject.loopEnd}}
 	else if (settingsObjectLength) {musLength=settingsObjectLength};
@@ -118,8 +120,6 @@ async function gmeplay(url, tracknum, audioCtx, settingsObject /*contains LoopOb
 			"getTotalVoices",
 			"number"
 		)
-		console.log("getting intro length...")
-		var introlength=Module.ccall("getIntroLength","number") // if I place this at the bottom, it errors
 		console.log("totalVoices: "+totalVoices)
 		// make the getVoiceName() function go out of scope when it is no longer needed
 		let getVoiceName=Module.cwrap("getVoiceName", "string", ["number"])
