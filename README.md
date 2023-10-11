@@ -1,7 +1,5 @@
 # Web-GME-Player
-Play a single chiptune file track in the browser and loop infinitely.
-
-Please view the [demo page](https://thysbelon.github.io/Web-GME-Player), its [source code](https://github.com/Thysbelon/Web-GME-Player/blob/main/index.html), and the comments in the [source code of `gmeplay-function.js`](https://github.com/Thysbelon/Web-GME-Player/blob/main/gmeplay-function.js).
+This branch is broken. I would like help to fix it. Please see Issues.
 
 ## How to build `main.c`
 Download the source of [game-music-emu](https://github.com/libgme/game-music-emu) (confirmed to work with [commit 87ebe8d](https://github.com/libgme/game-music-emu/commit/87ebe8d2f03f00ef98c4b5673d5234efd0412da7)). Follow their directions for compiling, but use emscripten tools (and you may want to name the build folder "build-emscripten"). Use this command for cmake:
