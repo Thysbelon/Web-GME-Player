@@ -1,4 +1,4 @@
-// to do: use OfflineAudioContext, slow the sample rate of beeper music to 43,659 Hz to make it play correctly; create a page listing all Voice names for all possible chips; check accuracy of test music; give the user an example of a DynamicsCompressorNode they can use on .ay music to make it sound better. (threshold should be -15?). Maybe I don't even have to generate the samples in buffers, maybe I can call MusPlay just once. gme_set_tempo could be useful for speed adjustment. check out gme_enable_accuracy
+// to do: test on mobile and old laptop; slow down ZX Spectrum beeper music to make it play correctly; create a page listing all Voice names for all possible chips; check accuracy of test music; give the user an example of a DynamicsCompressorNode they can use on .ay music to make it sound better. (threshold should be -15?). gme_set_tempo could be useful for speed adjustment. check out gme_enable_accuracy
 // I've given up on figuring out exactly how fast beepola's output is
 /*
 NOTE ON panningObject AND THE N163 AND FAMISTUDIO
@@ -6,14 +6,14 @@ If you make a song in famistudio while only using some of the 8 Wave channels, t
 */
 // NOTE: not all SNES music can be played back, because the SPC format is insufficient for all SNES music. See vgmpf's page on SPC
 // Famicom Sunsoft 5B noise is not emulated. Famicom FDS channel modulo is not perfectly emulated.
-// *gme only supports Mega Drive (a.k.a. Genesis) vgm files*
+// *gme only supports Mega Drive (a.k.a. Genesis) vgm/vgz files*
 // *vgm and spc will take a very long time to play.*
 // Mega CD and 32x channels are not emulated.
 // MSX OPLL is not emulated.
-// Testing MSX OPL1 support is not possible because I cannot find a single KSS file that uses OPL1 a.k.a. MSX-AUDIO a.k.a. Y8950. If you can help, please open an issue on the Web-GME-Player GitHub repository, and either link to the KSS file or zip it and attach it to the issue.
+// Testing MSX OPL1 support is not possible because I cannot find a single KSS file that uses OPL1 a.k.a. MSX-AUDIO a.k.a. Y8950. If you can help, please link to or attach an OPL1 kss file to an issue on Web-GME-Player's repository.
 // *only use panningObject for mono music.*
 // the "worker" setting doesn't make the code run faster (it actually slows things down a little), but it moves the work off of the main thread, allowing the webpage to stay responsive while work runs in the background.
-// to understand the code, you should read about the JavaScript Web Audio API, Emscripten, ternary operators, and Web Workers. Please let me know if there's any prerequisites I missed.
+// to understand the code, you should read about the JavaScript Web Audio API, Emscripten, ternary operators, Web Workers, and Promises. Please let me know if there are any prerequisites I missed.
 
 const INT16_MAX = 65535;
 const SAMPLERATE = 44100;
@@ -34,6 +34,7 @@ function gmeplay(input, tracknum, settings) {
 }
 function gmeDownload(input, tracknum, settings) {
 /* settings contains loop (loopStart (milliseconds), loopEnd, loopNum), length (never used with LoopObject), panningObject, worker (boolean) */
+// THIS FUNCTION IS NOT FINISHED
 	internalGMEplay(input, tracknum, settings, true) // to do: download functionality in internalGMEplay. worker functionality
 }
 function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
@@ -61,7 +62,7 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 			"setupMusStereo", // Sets up everything needed to play music in the c code; Also returns music length.
 			"number",
 			["number", "number"],
-			[tracknum/* track number */, settings.worker ? gme_info_only : SAMPLERATE]
+			[tracknum/* track number */, (settings.worker && !settings.panning) ? gme_info_only : SAMPLERATE] // gme_info_only does not allow getting total voices and voice names
 		)
 		// if the user defined a loopEnd or a length, overwrite the length obtained from the file with the user's
 		if (settings.loop) {if (settings.loop.loopEnd) {musLength=settings.loop.loopEnd}}
@@ -85,11 +86,14 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 				"getTotalVoices",
 				"number"
 			)
-			var getVoiceName=Module.cwrap("getVoiceName", "string", ["number"])
+			console.log('result of c:getTotalVoices: '+totalVoices)
+			let getVoiceName=Module.cwrap("getVoiceName", "string", ["number"])
 			var VoiceDict=[] // holds the name and voice num of each voice.
 			for (let i=0; i<totalVoices; i++) {
 				VoiceDict[i]=getVoiceName(i)
 			}
+			console.log('VoiceDict completed. VoiceDict: ')
+			console.log(VoiceDict)
 		} else {
 			var monobool=SystemMonoList.includes(Module.ccall("getSystem", "string"))
 		}
@@ -123,7 +127,7 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 }
 
 async function GMEgenSamples(data, tracknum, settings, samplerate, musLength, totalSamples, totalVoices, VoiceDict, monobool) {
-	console.log('GMEgenSamples called in '+( (typeof importScripts === 'function') ? "worker" : "window" )+'. tracknum: '+tracknum+', samplerate: '+samplerate+', musLength: '+musLength+', totalSamples: '+totalSamples+', monobool: '+monobool)
+	console.log('GMEgenSamples called in '+( (typeof importScripts === 'function') ? "worker" : "window" )+'. tracknum: '+tracknum+', samplerate: '+samplerate+', musLength: '+musLength+', totalSamples: '+totalSamples+', totalVoices: '+totalVoices+', monobool: '+monobool)
 	console.log('GMEgenSamples data:')
 	console.log(data)
 	console.log('GMEgenSamples settings:')
@@ -204,7 +208,7 @@ function genGMEbuffers(MusRec, bufferNum, oneMoreRun, mono, totalSamples) {
 	}
 	if (oneMoreRun) {
 		let bufPtr=playMus()
-		addBufferToMusRec(MusRec, bufPtr, bufferNum, (totalSamples-bufferNum*(BUFFERSIZE/2/*numChannels*/))*2/*to compensate for limiter*/)
+		addBufferToMusRec(MusRec, bufPtr, bufferNum, (totalSamples-bufferNum*(BUFFERSIZE/2/*numChannels*/))*2/*to compensate for limiter being divided by 2*/)
 	}
 }
 function addBufferToSampleArray(SampleArray /* Float32Array */, bufPtr, curBuffer/* integer, the number of whole buffers that have been generated thus far */, limiter, channel=0) { // add to the input Float32Array in place

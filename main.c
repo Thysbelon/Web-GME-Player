@@ -64,11 +64,7 @@ int setupMusStereo(int tracknum, int sample_rate)
 	
 	gme_ignore_silence( emu, 1 ); // very important for recording separate tracks. 1 is true
 	
-	/* Start track */
-	handle_error( gme_start_track( emu, tracknum ) ); // will this error if it's an info_only?
-	
-	//buf = malloc(sizeof(*buf) * buf_size); // https://stackoverflow.com/questions/4240331/c-initializing-a-global-array-in-a-function // this line seems to be causing issues
-	
+	// to do: put these printfs in a define DEBUG
 	int totalvoices=gme_voice_count( emu );
 	
 	printf("voice count: %d\n", totalvoices);
@@ -81,7 +77,7 @@ int setupMusStereo(int tracknum, int sample_rate)
 	
 	gme_track_info( emu, &info, tracknum );
 	
-	printf("info: song: %s, length: %d, intro_length: %d, loop_length: %d, play_length: %d, fade_length: %d, system: %s\n", info->song, info->length, info->intro_length, info->loop_length, info->play_length, info->fade_length, info->system); // what's wrong with this statement?
+	printf("info: song: %s, length: %d, intro_length: %d, loop_length: %d, play_length: %d, fade_length: %d, system: %s\n", info->song, info->length, info->intro_length, info->loop_length, info->play_length, info->fade_length, info->system);
 	
 	int length=info->length;
 	
@@ -92,8 +88,9 @@ int setupMusStereo(int tracknum, int sample_rate)
 	}
 	
 	gme_free_info(info);
-	
-	handle_error( gme_start_track( emu, tracknum ) );
+	if (sample_rate != gme_info_only) {
+		handle_error( gme_start_track( emu, tracknum ) );
+	}
 	
 	printf("setupMusStereo done\n");
 	return length;
@@ -128,7 +125,7 @@ EMSCRIPTEN_KEEPALIVE
 int GMEend() {
 	printf("Deleting emu of type %s.\n", gme_type_system( gme_type(emu) ) );
 	//printf("pointer of emu: %p.\n", emu );
-	gme_delete( emu ); // fail
+	gme_delete( emu );
 	printf("Deleted emu\n");
 	return 0;
 }
