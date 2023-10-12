@@ -1,0 +1,8 @@
+emcc -O0 -I../../game-music-emu/game-music-emu-master/gme ../../game-music-emu/game-music-emu-master/build-emscripten-2/gme/libgme.a main.c -o Web-GME-PlayerO0-ASan.js -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,getValue -sALLOW_MEMORY_GROWTH -gsource-map -fsanitize=address
+
+emcc -O0 -I../../game-music-emu/game-music-emu-master/gme ../../game-music-emu/game-music-emu-master/build-emscripten-ubsan/gme/libgme.a main.c -o Web-GME-PlayerO0-UBsan.js -sEXPORTED_RUN
+TIME_METHODS=ccall,cwrap,getValue -gsource-map -fsanitize=undefined
+
+emcc -O0 -I../../game-music-emu/game-music-emu-master/gme ../../game-music-emu/game-music-emu-master/build-emscripten-2/gme/libgme.a main.c -o Web-GME-PlayerO0-SAFE_HEAP.js -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,getValue -sSAFE_HEAP -gsource-map
+
+build-emscripten-ubsan folder contains a libgme.a built with the UBSAN cmake argument
