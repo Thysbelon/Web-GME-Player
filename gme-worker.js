@@ -1,4 +1,4 @@
-importScripts("Web-GME-PlayerO0.js");
+importScripts("Web-GME-PlayerO0-ASan.js");
 importScripts("gmeplay-function.js");
 
 var globalData;

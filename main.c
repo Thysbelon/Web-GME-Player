@@ -71,7 +71,7 @@ int setupMusStereo(int inputBufSize, int tracknum, int sample_rate)
 	/* Start track */
 	handle_error( gme_start_track( emu, tracknum ) ); // will this error if it's an info_only?
 	
-	buf = malloc(sizeof(*buf) * buf_size); // https://stackoverflow.com/questions/4240331/c-initializing-a-global-array-in-a-function
+	buf = malloc(sizeof(*buf) * buf_size); // https://stackoverflow.com/questions/4240331/c-initializing-a-global-array-in-a-function // this line seems to be causing issues
 	
 	int totalvoices=gme_voice_count( emu );
 	
@@ -131,6 +131,7 @@ int getIntroLength() { // run after setup
 EMSCRIPTEN_KEEPALIVE
 int GMEend() {
 	printf("Deleting emu of type %s.\n", gme_type_system( gme_type(emu) ) );
+	printf("pointer of emu: %p.\n", emu );
 	gme_delete( emu ); // fail fail fail failf fail
 	printf("Deleted emu\n");
 	return 0;
@@ -142,7 +143,7 @@ const char* getVoiceName(int voicenum) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int setVoiceForRecording(int voicenum) // on O3, this function is what causes "TypeError: argTypes.every is not a function"; the error only happens when I try to use panningObject
+int setVoiceForRecording(int voicenum)
 {
 	printf("setVoiceForRecording with voicenum: %d, name: %s\n", voicenum, gme_voice_name( emu, voicenum ));
 	
