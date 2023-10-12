@@ -1,4 +1,4 @@
-importScripts("Web-GME-PlayerO0-ASan.js");
+importScripts("Web-GME-PlayerO0.js");
 importScripts("gmeplay-function.js");
 
 var globalData;
@@ -27,8 +27,8 @@ function workerStart(){
 	Module.ccall(
 		"setupMusStereo", // Sets up everything needed to play music in the c code;
 		"number",
-		["number", "number", "number"],
-		[BUFFERSIZE, globalData[1], SAMPLERATE]
+		["number", "number"],
+		[globalData[1], SAMPLERATE]
 	)
 	GMEgenSamples(globalData[0], globalData[1], globalData[2], globalData[3], globalData[4], globalData[5], globalData[6], globalData[7], globalData[8]).then((MusRec) => {
 		// Module.ccall("GMEend"); FS.unlink("/home/web_user/input"); /*delete file*/

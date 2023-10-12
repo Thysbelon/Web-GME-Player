@@ -60,8 +60,8 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 		var musLength=Module.ccall( // length of the song as defined in the file's metadata
 			"setupMusStereo", // Sets up everything needed to play music in the c code; Also returns music length.
 			"number",
-			["number", "number", "number"],
-			[BUFFERSIZE, tracknum/* track number */, settings.worker ? gme_info_only : SAMPLERATE]
+			["number", "number"],
+			[tracknum/* track number */, settings.worker ? gme_info_only : SAMPLERATE]
 		)
 		// if the user defined a loopEnd or a length, overwrite the length obtained from the file with the user's
 		if (settings.loop) {if (settings.loop.loopEnd) {musLength=settings.loop.loopEnd}}
@@ -133,7 +133,7 @@ async function GMEgenSamples(data, tracknum, settings, samplerate, musLength, to
 	
 	// bufferSize will always be 2048. Latency doesn't matter, because unlike the Chip Player JS code I used months ago as reference, we're not rendering the audio in real time.
 	
-	var bufferNum=totalSamples/BUFFERSIZE; // number of whole buffers that need to be generated to complete the song
+	var bufferNum=totalSamples/(BUFFERSIZE/2/*numChannels*/); // number of whole buffers that need to be generated to complete the song
 	if (!Number.isInteger(bufferNum)) {
 		var oneMoreRun=true;
 		bufferNum=Math.floor(bufferNum)
@@ -189,7 +189,7 @@ function genGMEbuffers(MusRec, bufferNum, oneMoreRun, mono, totalSamples) {
 	console.log(MusRec)
 	if (mono===false) { // stereo
 		var addBufferToMusRec=function(MusRec, bufPtr, curBuffer, limiter){
-			console.log('function expression addBufferToMusRec (stereo) called. bufPtr: '+bufPtr+', curBuffer: '+curBuffer+', limiter: '+limiter);
+			//console.log('function expression addBufferToMusRec (stereo) called. bufPtr: '+bufPtr+', curBuffer: '+curBuffer+', limiter: '+limiter);
 			for (let channel=0; channel<2; channel++) {
 				addBufferToSampleArray(MusRec[channel], bufPtr, curBuffer, limiter, channel)
 			}
@@ -204,13 +204,13 @@ function genGMEbuffers(MusRec, bufferNum, oneMoreRun, mono, totalSamples) {
 	}
 	if (oneMoreRun) {
 		let bufPtr=playMus()
-		addBufferToMusRec(MusRec, bufPtr, bufferNum, totalSamples-bufferNum*BUFFERSIZE)
+		addBufferToMusRec(MusRec, bufPtr, bufferNum, (totalSamples-bufferNum*(BUFFERSIZE/2/*numChannels*/))*2/*to compensate for limiter*/)
 	}
 }
 function addBufferToSampleArray(SampleArray /* Float32Array */, bufPtr, curBuffer/* integer, the number of whole buffers that have been generated thus far */, limiter, channel=0) { // add to the input Float32Array in place
 	//console.log('addBufferToSampleArray called. bufPtr: '+bufPtr+', curBuffer: '+curBuffer+', limiter: '+limiter+', channel: '+channel)
-	for(let i=0; i<limiter; i++){
-		SampleArray[i+curBuffer*BUFFERSIZE]= Module.getValue(bufPtr+i * 2 * 2 + /* frame offset * bytes per sample * num channels + */ channel * 2  /* channel offset * bytes per sample */, 'i16') / INT16_MAX /* convert int16 to float*/
+	for(let i=0; i*2/*numChannels*/<limiter/*number of int16 samples*/; i++){
+		SampleArray[i+curBuffer*BUFFERSIZE / 2/*numChannels*/]= Module.getValue(bufPtr + (i * 2/*bytes per sample*/) * 2/*numChannels*/ + channel * 2/*bytes per sample*/, 'i16') / INT16_MAX /* convert int16 to float*/
 	}
 }
 function workerGMEgenSamples(data, tracknum, settings, samplerate, musLength, totalSamples, totalVoices, VoiceDict, monobool) {
