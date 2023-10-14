@@ -1,4 +1,4 @@
-// to do: test on mobile and old laptop; slow down ZX Spectrum beeper music to make it play correctly; create a page listing all Voice names for all possible chips; check accuracy of test music; give the user an example of a DynamicsCompressorNode they can use on .ay music to make it sound better. (threshold should be -15?). gme_set_tempo could be useful for speed adjustment. check out gme_enable_accuracy
+// to do: test on mobile and old laptop; slow down ZX Spectrum beeper music to make it play correctly by rendering at a high samplerate then playing back at 44100Hz (if length is 3000 milliseconds, the song will be 3000 milliseconds long regardless of speedAdjust); create a page listing all Voice names for all possible chips; check accuracy of test music; give the user an example of a DynamicsCompressorNode they can use on .ay music to make it sound better. (threshold should be -15?). check out gme_enable_accuracy
 // I've given up on figuring out exactly how fast beepola's output is
 /*
 NOTE ON panningObject AND THE N163 AND FAMISTUDIO
@@ -29,7 +29,8 @@ const GMEend=Module.cwrap("GMEend", "number", null);
 const gme_info_only = -1
 
 function gmeplay(input, tracknum, settings) {
-/* settings contains loop (loopStart (milliseconds), loopEnd), length (never used with LoopObject), panningObject, worker (boolean) */
+/* settings contains loop (loopStart (milliseconds), loopEnd), length (never used with LoopObject), panningObject, worker (boolean), speed: float (0.5 is half speed. 1 is regular, etc. affects pitch) */
+// when speed is set, length and introlenth values from file will be automatically adjusted, HOWEVER user-defined length and loopStart values will not be adjusted
 	internalGMEplay(input, tracknum, settings)
 }
 function gmeDownload(input, tracknum, settings) {
@@ -54,6 +55,7 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 			return
 		}
 	}
+	if (!settings.speed) {settings.speed=1}
 	const getFunction= filebool ? getFile : getURL // placing a function inside a variable; when the variable is called with parentheses, it executes whatever function is stored inside.
 	getFunction(input, vgzbool ? vgzbool : undefined).then((data) => {
 		FS.writeFile('/home/web_user/input', data); // don't use {flags:"r"}
@@ -62,8 +64,8 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 			"setupMusStereo", // Sets up everything needed to play music in the c code; Also returns music length.
 			"number",
 			["number", "number"],
-			[tracknum/* track number */, (settings.worker && !settings.panning) ? gme_info_only : SAMPLERATE] // gme_info_only does not allow getting total voices and voice names
-		)
+			[tracknum/* track number */, (settings.worker && !settings.panning) ? gme_info_only : SAMPLERATE/settings.speed] // gme_info_only does not allow getting total voices and voice names
+		) / settings.speed
 		// if the user defined a loopEnd or a length, overwrite the length obtained from the file with the user's
 		if (settings.loop) {if (settings.loop.loopEnd) {musLength=settings.loop.loopEnd}}
 		else if (settings.length) {musLength=settings.length};
@@ -71,13 +73,13 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 		if (musLength<= -1 || !musLength) {musLength=150000}
 		console.log("musLength: "+musLength)
 		
-		const totalSamples=musLength/* in milliseconds */ * SAMPLERATE / 1000 // total samples in the song. // note to myself: this can be a float, should something be done about this?
+		const totalSamples=musLength/* in milliseconds */ * SAMPLERATE / 1000 // total samples in the song. // note to myself: this can be a float, should something be done about this? // this is not affected by settings.speed
 		if (settings.loop) {
 			if (!settings.loop.loopStart) {
-				var introLength=Module.ccall("getIntroLength","number")
+				var introLength=Module.ccall("getIntroLength","number") / settings.speed
 				if (introLength <= -1) {introLength=0}
 			} else {
-				var introLength=settings.loop.loopStart
+				var introLength=settings.loop.loopStart // not affected by settings.speed
 			}
 		}
 		
@@ -102,7 +104,7 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 	
 	
 		const genSamplesFunc= settings.worker ? workerGMEgenSamples : GMEgenSamples
-		genSamplesFunc(data, tracknum, settings, SAMPLERATE, musLength, totalSamples, totalVoices ? totalVoices : undefined, VoiceDict ? VoiceDict : undefined, (monobool!=undefined) ? monobool : undefined).then((MusRec) => {
+		genSamplesFunc(settings, totalSamples, totalVoices ? totalVoices : undefined, VoiceDict ? VoiceDict : undefined, (monobool!=undefined) ? monobool : undefined, data ? data : undefined, (tracknum!=undefined) ? tracknum : undefined).then((MusRec) => {
 			if (settings.panning) {
 				const MusRecOther=MusRec.pop()
 				console.log(introLength)
@@ -126,10 +128,8 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 	})
 }
 
-async function GMEgenSamples(data, tracknum, settings, samplerate, musLength, totalSamples, totalVoices, VoiceDict, monobool) {
-	console.log('GMEgenSamples called in '+( (typeof importScripts === 'function') ? "worker" : "window" )+'. tracknum: '+tracknum+', samplerate: '+samplerate+', musLength: '+musLength+', totalSamples: '+totalSamples+', totalVoices: '+totalVoices+', monobool: '+monobool)
-	console.log('GMEgenSamples data:')
-	console.log(data)
+async function GMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, monobool) {
+	console.log('GMEgenSamples called in '+( (typeof importScripts === 'function') ? "worker" : "window" )+', totalSamples: '+totalSamples+', totalVoices: '+totalVoices+', monobool: '+monobool)
 	console.log('GMEgenSamples settings:')
 	console.log(settings)
 	console.log('GMEgenSamples VoiceDict:')
@@ -217,7 +217,7 @@ function addBufferToSampleArray(SampleArray /* Float32Array */, bufPtr, curBuffe
 		SampleArray[i+curBuffer*BUFFERSIZE / 2/*numChannels*/]= Module.getValue(bufPtr + (i * 2/*bytes per sample*/) * 2/*numChannels*/ + channel * 2/*bytes per sample*/, 'i16') / INT16_MAX /* convert int16 to float*/
 	}
 }
-function workerGMEgenSamples(data, tracknum, settings, samplerate, musLength, totalSamples, totalVoices, VoiceDict, monobool) {
+function workerGMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, monobool, data, tracknum) {
 // using the "async" keyword before "function" to convert a callback api to a promise, doesn't appear to work. I changed this to "return Promise" https://stackoverflow.com/questions/22519784/how-do-i-convert-an-existing-callback-api-to-promises
 	return new Promise(function(resolve, reject) {
 		const gmeWorker= new Worker("gme-worker.js");
@@ -227,7 +227,7 @@ function workerGMEgenSamples(data, tracknum, settings, samplerate, musLength, to
 			//return e.data // MusRec
 			resolve(e.data) // MusRec
 		}, {once:true})
-		gmeWorker.postMessage([data, tracknum, settings, samplerate, musLength, totalSamples, totalVoices, VoiceDict, monobool])
+		gmeWorker.postMessage([settings, totalSamples, totalVoices, VoiceDict, monobool, data, tracknum])
 	})
 }
 
@@ -336,6 +336,7 @@ function generateWaveAndDownload(MusOutput) {
 }
 
 function gmeDownload(input, tracknum=0, settings={} /*contains LoopObject (loopStart (milliseconds), loopEnd, loopNum (int, number of times the song will loop, default 2)), length (never used with LoopObject), panningObject, speedAdjust (boolean), worker (boolean)*/) {
+	// NOT FINISHED
 	
 	if (/*url*/ input.includes(".vgz") || /*file*/ input.name.includes(".vgz")) {
 		if (pako) {

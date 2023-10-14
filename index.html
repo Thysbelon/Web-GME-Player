@@ -59,6 +59,9 @@ Square 4:1</textarea>
 <br>
 <label for="length">length:</label><input type="text" id="length"/>
 <br>
+<label for="speed">speed:</label>
+<input type="number" id="speed" min=0 step=any placeholder="enter number, 0.5 is half speed" style=width:16em />
+<br>
 <fieldset>
 <legend>worker</legend>
 <label><input type="radio" name="worker" id="workerRadio" /> true</label>
@@ -90,6 +93,7 @@ var loopStartInput=document.getElementById("loopStart")
 var loopEndInput=document.getElementById("loopEnd")
 var workerRadio=document.getElementById("workerRadio")
 var fileInput=document.getElementById("song-select-file")
+var speedInput=document.getElementById("speed")
 gmeplaybut.addEventListener("click",myclick,{once:true})
 function myclick(){
 	this.innerHTML="Playing..."
@@ -101,8 +105,9 @@ function myclick(){
 	var loopStart=loopStartInput.value;
 	var loopEnd=loopEndInput.value;
 	var workerbool=workerRadio.checked;
+	var speed=speedInput.value
 	console.log("songSelect.value: "+songSelect.value)
-	if (panKeyVal || length || LoopObjectExists || workerbool) {
+	if (panKeyVal || length || LoopObjectExists || workerbool || speed) {
 		var settingsObject={};
 		if (panKeyVal) {
 			panKeyVal=panKeyVal.split("\n");
@@ -122,6 +127,9 @@ function myclick(){
 		console.log(settingsObject)
 		if (workerbool) {
 			settingsObject.worker=true
+		}
+		if (speed) {
+			settingsObject.speed=speed
 		}
 		gmeplay(fileInput.files[0] ? fileInput.files[0] : "test-music/"+songSelect.value, parseInt(track.value),settingsObject);
 	} else {
