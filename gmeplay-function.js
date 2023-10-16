@@ -1,4 +1,5 @@
-// to do: test on mobile and old laptop; slow down ZX Spectrum beeper music to make it play correctly by rendering at a high samplerate then playing back at 44100Hz (if length is 3000 milliseconds, the song will be 3000 milliseconds long regardless of speedAdjust); create a page listing all Voice names for all possible chips; check accuracy of test music; give the user an example of a DynamicsCompressorNode they can use on .ay music to make it sound better. (threshold should be -15?). check out gme_enable_accuracy
+// to do: test on mobile and old laptop; create a page listing all Voice names for all possible chips; check accuracy of test music; give the user an example of a DynamicsCompressorNode they can use on .ay music to make it sound better. (threshold should be -15?). check out gme_enable_accuracy
+// to do: add "modularization" to Web-GME-Player; basically, make it so Web-GME-Player c functions are not called with Module.ccall(), but rather something like gmeModule.ccall(). If the user is using multiple emscripten things, we don't want them to conflict and overwrite each other.
 // I've given up on figuring out exactly how fast beepola's output is
 /*
 NOTE ON panningObject AND THE N163 AND FAMISTUDIO
@@ -31,12 +32,12 @@ const gme_info_only = -1
 function gmeplay(input, tracknum, settings) {
 /* settings contains loop (loopStart (milliseconds), loopEnd), length (never used with LoopObject), panningObject, worker (boolean), speed: float (0.5 is half speed. 1 is regular, etc. affects pitch) */
 // when speed is set, length and introlenth values from file will be automatically adjusted, HOWEVER user-defined length and loopStart values will not be adjusted
-	internalGMEplay(input, tracknum, settings)
+	internalGMEplay(input, tracknum, settings, false)
 }
 function gmeDownload(input, tracknum, settings) {
 /* settings contains loop (loopStart (milliseconds), loopEnd, loopNum), length (never used with LoopObject), panningObject, worker (boolean) */
 // THIS FUNCTION IS NOT FINISHED
-	internalGMEplay(input, tracknum, settings, true) // to do: download functionality in internalGMEplay. worker functionality
+	internalGMEplay(input, tracknum, settings, true)
 }
 function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 	console.log('internalGMEplay called. tracknum: '+tracknum+', wav: '+wav)
@@ -44,6 +45,8 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 	console.log(input)
 	console.log('internalGMEplay settings:')
 	console.log(settings)
+	
+	if (wav && !SOXModule) {console.error("You are trying to save the output as a wav file, but sox-emscripten is not present to convert raw PCM to wav. https://github.com/rameshvarun/sox-emscripten ")}
 	
 	const filebool=(typeof input === "object")
 	console.log("filebool: "+filebool)
@@ -105,14 +108,20 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 	
 		const genSamplesFunc= settings.worker ? workerGMEgenSamples : GMEgenSamples
 		genSamplesFunc(settings, totalSamples, totalVoices ? totalVoices : undefined, VoiceDict ? VoiceDict : undefined, (monobool!=undefined) ? monobool : undefined, data ? data : undefined, (tracknum!=undefined) ? tracknum : undefined).then((MusRec) => {
-			if (settings.panning) {
-				const MusRecOther=MusRec.pop()
-				console.log(introLength)
-				GenerateAudioBuffer(MusRec, MusRecOther, totalSamples, musLength, (introLength!=undefined) ? introLength : undefined, undefined, monobool, settings, totalVoices, VoiceDict).then((value) => { // uses OfflineAudioContext to generate an audio buffer
+			if (settings.panning || wav) {
+				if (settings.panning) {var MusRecOther=MusRec.pop()}
+				GenerateAudioBuffer(MusRec, MusRecOther ? MusRecOther : undefined, totalSamples, musLength, (introLength!=undefined) ? introLength : undefined, wav, monobool/*why doesn't this error?*/, settings, totalVoices ? totalVoices : undefined, VoiceDict ? VoiceDict : undefined).then((value) => { // uses OfflineAudioContext to generate an audio buffer
 					const MusOutput=value[0]
-					const sourceNodeSettings=value[1]
-					console.log(sourceNodeSettings)
-					genAndStartSourceNode(undefined, sourceNodeSettings, monobool, totalSamples, MusOutput) // plays the generated buffer on the device's speakers/headphones/etc.
+					if (wav) {
+						wavFilename= filebool ? input.name : input
+						wavFilename=wavFilename.replace(/\.....?$/i, '.wav') // regex: replace any 3 or 4 character file extension with wav
+						console.log('wavFilename: '+wavFilename)
+						generateWavAndDownload(MusOutput, wavFilename, settings.panning ? false : monobool)
+					} else {
+						const sourceNodeSettings=value[1]; 
+						console.log(sourceNodeSettings);
+						genAndStartSourceNode(undefined, sourceNodeSettings, monobool, totalSamples, MusOutput) // plays the generated buffer on the device's speakers/headphones/etc.
+					}
 				}) 
 				
 			} else {
@@ -219,6 +228,13 @@ function addBufferToSampleArray(SampleArray /* Float32Array */, bufPtr, curBuffe
 }
 function workerGMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, monobool, data, tracknum) {
 // using the "async" keyword before "function" to convert a callback api to a promise, doesn't appear to work. I changed this to "return Promise" https://stackoverflow.com/questions/22519784/how-do-i-convert-an-existing-callback-api-to-promises
+	console.log('workerGMEgenSamples called. totalSamples: '+totalSamples+', totalVoices: '+totalVoices+', monobool: '+monobool+', tracknum: '+tracknum)
+	console.log('workerGMEgenSamples settings:')
+	console.log(settings)
+	console.log('workerGMEgenSamples VoiceDict:')
+	console.log(VoiceDict)
+	console.log('workerGMEgenSamples data:')
+	console.log(data)
 	return new Promise(function(resolve, reject) {
 		const gmeWorker= new Worker("gme-worker.js");
 		gmeWorker.addEventListener("message", function(e){
@@ -232,8 +248,19 @@ function workerGMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, mon
 }
 
 async function GenerateAudioBuffer(MusRec, MusRecOther, bufferLength, musLength, loopStart, wav, monobool, settings, totalVoices, VoiceDict) {
+	console.log('GenerateAudioBuffer called. bufferLength: '+bufferLength+', musLength: '+musLength+', loopStart: '+loopStart+', wav: '+wav+', monobool: '+monobool+', totalVoices: '+totalVoices)
+	console.log('GenerateAudioBuffer MusRec:')
+	console.log(MusRec)
+	console.log('GenerateAudioBuffer MusRecOther:')
+	console.log(MusRecOther)
+	console.log('GenerateAudioBuffer settings:')
+	console.log(settings)
+	
+	if (wav) {var loopNum = settings?.loop?.loopNum ? settings.loop.loopNum : 2}
+	// loopNum must be at least 1. Int
+	
 	/* if we're recording loops for wav, then bufferLength would be the length of the loops */
-	const actx= new OfflineAudioContext(2, wav ? (musLength+(loopNum-1/*the first loop is always a part of what GME generates*/)*(musLength-loopStart/*length of a loop without intro*/))*SAMPLERATE/1000 : bufferLength, SAMPLERATE)
+	const actx= new OfflineAudioContext(2, (wav && settings.loop) ? (musLength+(loopNum-1/*the first loop is always a part of what GME generates*/)*(musLength-loopStart/*length of a loop without intro*/))*SAMPLERATE/1000 : bufferLength, SAMPLERATE)
 	var sourceNodeSettings={};
 	if (loopStart!=undefined/* && wav*/) {
 		sourceNodeSettings={loop:true, loopEnd:musLength/1000, loopStart:loopStart/1000}
@@ -273,6 +300,16 @@ async function GenerateAudioBuffer(MusRec, MusRecOther, bufferLength, musLength,
 	return [MusOutput, sourceNodeSettings]
 }
 function genAndStartSourceNode(inputOfflineActx, sourceNodeSettings, monobool, bufferLength, inputAudioBuffer, MusRec) {
+	console.log('genAndStartSourceNode called. monobool: '+monobool+', bufferLength: '+bufferLength)
+	console.log('genAndStartSourceNode inputOfflineActx:')
+	console.log(inputOfflineActx)
+	console.log('genAndStartSourceNode sourceNodeSettings:')
+	console.log(sourceNodeSettings)
+	console.log('genAndStartSourceNode inputAudioBuffer:')
+	console.log(inputAudioBuffer)
+	console.log('genAndStartSourceNode MusRec:')
+	console.log(MusRec)
+	
 	const actx= inputOfflineActx ? inputOfflineActx : new AudioContext({sampleRate:44100});
 	const audioBuffer= MusRec ? createAudioBufferAndFill(monobool ? 1 : 2, bufferLength, MusRec, actx) : inputAudioBuffer
 	const sourceNode= new AudioBufferSourceNode(actx, sourceNodeSettings)
@@ -301,7 +338,57 @@ function fillAudioBufferWithMusRec(MusRecBuffer, MusRec, bufferLength, channel) 
 		nowBuffering[i]=MusRec[i]
 	}
 }
+function generateWavAndDownload(MusOutput, name, monobool) {
+	console.log('generateWavAndDownload called. name: '+name+', monobool: '+monobool)
+	console.log('generateWavAndDownload MusOutput:')
+	console.log(MusOutput)
+	
+	PCMdata=[]
+	PCMdata[0]=MusOutput.getChannelData(0) // left
+	console.log('PCMdata[0]: ')
+	console.log(PCMdata[0])
+	if (!monobool) {PCMdata[1]=MusOutput.getChannelData(1)} // right
+	const inputRawArguments=['-t', 'raw', '-L', "-r", "44100", "-e", "floating-point", "-b", "32", "-c", "1"/*, "input1.raw"*/]
+	var arguments= monobool ? [] : ['-M']
+	arguments=arguments.concat(inputRawArguments, "input1.raw")
+	if (!monobool) {arguments=arguments.concat(inputRawArguments, "input2.raw")}
+	const outputWavArguments=['-e', 'signed-integer', '-b', '16', '-c'] // we convert back to 16bit to save space. the samples generated by gme were originally 16bit
+	arguments=arguments.concat(outputWavArguments, monobool ? '1' : '2', 'output.wav')
+	console.log(arguments.join(' '))
+	var inputmodule={
+		arguments: arguments,
+		preRun: () => {
+			inputmodule.FS.writeFile("input1.raw", new Uint8Array(PCMdata[0].buffer/*Returns the ArrayBuffer referenced by the typed array.*/));
+			// Emscripten FS.writeFile only functions properly with Uint8Arrays.
+			if (!monobool) {inputmodule.FS.writeFile("input2.raw", new Uint8Array(PCMdata[1].buffer))};
+			
+			//let debugInput = inputmodule.FS.readFile("input1.raw", {
+			//	encoding: "binary"
+			//});
+			//download(new File([debugInput], 'input1.raw'))
+		},
+		postRun: () => {
+			let output = inputmodule.FS.readFile("output.wav", {
+				encoding: "binary"
+			});
+			download(new File([output], name))
+		},
+	};
+	SOXModule(inputmodule);
+}
 
+function download(file) { // to do: replace the file argument with blob and name?
+	const link = document.createElement('a')
+	const url = URL.createObjectURL(file)
+	
+	link.href = url
+	link.download = file.name
+	document.body.appendChild(link)
+	link.click()
+	
+	document.body.removeChild(link)
+	window.URL.revokeObjectURL(url)
+}
 async function getURL(url, vgzbool) {
 	var response = await fetch(url)
 	response = await response.arrayBuffer()
@@ -326,35 +413,7 @@ function getFile(file, vgzbool) {
 				console.log("getFile finished")
 				//return data;
 				resolve(data)
-			}
+			} // to do: place reject here
 		}
-	})
-}
-
-function generateWaveAndDownload(MusOutput) {
-	// use sox-emscripten to take the (if panning) raw audiobuffer data OR MusRec and convert it to wav.
-}
-
-function gmeDownload(input, tracknum=0, settings={} /*contains LoopObject (loopStart (milliseconds), loopEnd, loopNum (int, number of times the song will loop, default 2)), length (never used with LoopObject), panningObject, speedAdjust (boolean), worker (boolean)*/) {
-	// NOT FINISHED
-	
-	if (/*url*/ input.includes(".vgz") || /*file*/ input.name.includes(".vgz")) {
-		if (pako) {
-			var vgzbool=true
-		} else {
-			console.error("vgz file detected, but pako is not present to extract. https://www.jsdelivr.com/package/npm/pako?tab=files ")
-			return
-		}
-	}
-	if (!SOXModule) { // to do: add "modularization" to Web-GME-Player; basically, make it so Web-GME-Player c functions are not called with Module.ccall(), but rather something like gmeModule.ccall(). If the user is using multiple emscripten things, we don't want them to conflict and overwrite each other.
-		console.error("You are trying to save the output as a wav file, but sox-emscripten is not present to convert raw PCM to wav. https://github.com/rameshvarun/sox-emscripten ")
-		return
-	}
-	
-	const getFunction= typeof input === "object" ? getFile : getURL
-	getFunction(input).then((data) => {
-		const MusRec = internalGMEgenSamples(data, speedAdjust ? SAMPLERATE+SAMPLERATE*0.01 : SAMPLERATE)
-		const MusOutput = GenerateAudioBuffer(MusRec) // uses OfflineAudioContext to generate an audio buffer
-		GenerateWaveAndDownload(MusOutput)
 	})
 }
