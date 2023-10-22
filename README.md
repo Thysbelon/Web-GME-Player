@@ -1,7 +1,11 @@
 # Web-GME-Player
 Play a single chiptune file track in the browser and loop infinitely.
 
-Please view the [demo page](https://thysbelon.github.io/Web-GME-Player), its [source code](https://github.com/Thysbelon/Web-GME-Player/blob/main/index.html), and the comments in the [source code of `gmeplay-function.js`](https://github.com/Thysbelon/Web-GME-Player/blob/main/gmeplay-function.js).
+The purpose of this program is to allow web developers to easily embed chiptune into their websites, blogs, and blog posts. For an example of how it can be used, please see [this blog post of mine](https://thysbelon.github.io/2023/10/04/Drawcia-Sorceress-ZX-Spectrum-Beeper-Cover); the "play" button calls the gmeplay() function with a relative url to a chiptune music file as input (absolute url of the file: https://thysbelon.github.io/2023/10/04/DrawciaSorceress.ay).
+
+The [demo page](https://thysbelon.github.io/Web-GME-Player) allows you to test out the features of the program, but it is not a fully fledged chiptune music webapp; if you are looking for a chiptune webapp, please see [chiptune.app](https://chiptune.app) by Matt Montag (whose code was helpful when I was figuring out how to make Web-GME-Player).
+
+If you want to learn all of the features of this program, or gain a deeper understanding of the program's code, or wish to modify the program, please view the [demo page](https://thysbelon.github.io/Web-GME-Player), its [source code](https://github.com/Thysbelon/Web-GME-Player/blob/main/index.html), and the comments in the [source code of `gmeplay-function.js`](https://github.com/Thysbelon/Web-GME-Player/blob/main/gmeplay-function.js).
 
 ## How to build `main.c`
 (Instructions have only been tested on WSL Ubuntu)
