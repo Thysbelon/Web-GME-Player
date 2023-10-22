@@ -1,5 +1,4 @@
 // to do: test on mobile and old laptop; create a page listing all Voice names for all possible chips; check accuracy of test music; give the user an example of a DynamicsCompressorNode they can use on .ay music to make it sound better. (threshold should be -15?). check out gme_enable_accuracy
-// to do: add "modularization" to Web-GME-Player; basically, make it so Web-GME-Player c functions are not called with Module.ccall(), but rather something like gmeModule.ccall(). If the user is using multiple emscripten things, we don't want them to conflict and overwrite each other.
 // I've given up on figuring out exactly how fast beepola's output is
 /*
 NOTE ON panningObject AND THE N163 AND FAMISTUDIO
