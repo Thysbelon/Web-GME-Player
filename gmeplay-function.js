@@ -14,7 +14,18 @@ If you make a song in famistudio while only using some of the 8 Wave channels, t
 // Testing MSX OPL1 support is not possible because I cannot find a single KSS file that uses OPL1 a.k.a. MSX-AUDIO a.k.a. Y8950. If you can help, please link to or attach an OPL1 kss file to an issue on Web-GME-Player's repository.
 // *only use panningObject for mono music.*
 // the "worker" setting doesn't make the code run faster (it actually slows things down a little), but it moves the work off of the main thread, allowing the webpage to stay responsive while work runs in the background.
-// to understand the code, you should read about the JavaScript Web Audio API, Emscripten, ternary operators, Web Workers, and Promises. Please let me know if there are any prerequisites I missed.
+// to understand the code, you should read about the JavaScript Web Audio API, Emscripten, ternary operators, Web Workers, Promises. Please let me know if there are any prerequisites I missed.
+
+//const gmeModule=await createGMEmodule()
+var GMEend;
+var gmeModule;
+if (typeof window === 'object') { // web browser window
+	createGMEmodule().then((result) => {
+		gmeModule=result
+		GMEend=gmeModule.cwrap("GMEend", "number", null)
+		console.log('gmeModule ready')
+	})
+}
 
 const INT16_MAX = 65535;
 const SAMPLERATE = 44100;
@@ -25,8 +36,6 @@ const SystemMonoList=[
 	"ZX Spectrum",
 	"MSX" // gme can only play PSG and SCC, which are mono
 ]
-const playMus=Module.cwrap("playMus", "number", null) // the playMus function generates samples when it is run.
-const GMEend=Module.cwrap("GMEend", "number", null);
 const gme_info_only = -1
 
 function gmeplay(input, tracknum, settings) {
@@ -61,9 +70,9 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 	if (!settings.speed) {settings.speed=1}
 	const getFunction= filebool ? getFile : getURL // placing a function inside a variable; when the variable is called with parentheses, it executes whatever function is stored inside.
 	getFunction(input, vgzbool ? vgzbool : undefined).then((data) => {
-		FS.writeFile('/home/web_user/input', data); // don't use {flags:"r"}
+		gmeModule.FS.writeFile('/home/web_user/input', data); // don't use {flags:"r"}
 		// there is no reason to not run setupMusStereo in this function
-		var musLength=Module.ccall( // length of the song as defined in the file's metadata
+		var musLength=gmeModule.ccall( // length of the song as defined in the file's metadata
 			"setupMusStereo", // Sets up everything needed to play music in the c code; Also returns music length.
 			"number",
 			["number", "number"],
@@ -79,7 +88,7 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 		const totalSamples=musLength/* in milliseconds */ * SAMPLERATE / 1000 // total samples in the song. // note to myself: this can be a float, should something be done about this? // this is not affected by settings.speed
 		if (settings.loop) {
 			if (!settings.loop.loopStart) {
-				var introLength=Module.ccall("getIntroLength","number") / settings.speed
+				var introLength=gmeModule.ccall("getIntroLength","number") / settings.speed
 				if (introLength <= -1) {introLength=0}
 			} else {
 				var introLength=settings.loop.loopStart // not affected by settings.speed
@@ -87,12 +96,12 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 		}
 		
 		if (settings.panning) {
-			var totalVoices=Module.ccall(
+			var totalVoices=gmeModule.ccall(
 				"getTotalVoices",
 				"number"
 			)
 			console.log('result of c:getTotalVoices: '+totalVoices)
-			let getVoiceName=Module.cwrap("getVoiceName", "string", ["number"])
+			let getVoiceName=gmeModule.cwrap("getVoiceName", "string", ["number"])
 			var VoiceDict=[] // holds the name and voice num of each voice.
 			for (let i=0; i<totalVoices; i++) {
 				VoiceDict[i]=getVoiceName(i)
@@ -100,10 +109,10 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 			console.log('VoiceDict completed. VoiceDict: ')
 			console.log(VoiceDict)
 		} else {
-			var monobool=SystemMonoList.includes(Module.ccall("getSystem", "string"))
+			var monobool=SystemMonoList.includes(gmeModule.ccall("getSystem", "string"))
 		}
 		
-		if (settings.worker) {GMEend(); /* just gme_delete without args */ FS.unlink("/home/web_user/input"); /*delete file*/ console.log('deleted emu and file')}
+		if (settings.worker) {GMEend(); /* just gme_delete without args */ gmeModule.FS.unlink("/home/web_user/input"); /*delete file*/ console.log('deleted emu and file')}
 	
 	
 		const genSamplesFunc= settings.worker ? workerGMEgenSamples : GMEgenSamples
@@ -153,7 +162,7 @@ async function GMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, mon
 	} else {oneMoreRun=false}
 	if (settings.panning) {
 		var MusRec=[]
-		const changeVoice=Module.cwrap("setVoiceForRecording", "number", ["number"]) // function: rewinds track back to the beginning and mutes all voices except the voice specified in the argument.
+		const changeVoice=gmeModule.cwrap("setVoiceForRecording", "number", ["number"]) // function: rewinds track back to the beginning and mutes all voices except the voice specified in the argument.
 		const toMusRecOther=[] // contains the number of each channel that is not in the panning object.
 		for (let voice=0; voice<totalVoices; voice++) {
 			if (settings.panning[VoiceDict[voice]]) { // if the current voice is in the panning object (VoiceDict converts the number into a name)
@@ -166,7 +175,7 @@ async function GMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, mon
 		}
 		console.log(toMusRecOther)
 		const MusRecOther=new Float32Array(totalSamples) // contains sample data of every voice not in panningObject. Each voice is NOT in its own index, MusRecOther is an array of floating point samples.
-		const unmuteVoice=Module.cwrap("unmuteVoice", "number", ["number"])
+		const unmuteVoice=gmeModule.cwrap("unmuteVoice", "number", ["number"])
 		changeVoice(toMusRecOther[0])
 		console.log("toMusRecOther[0]: "+toMusRecOther[0])
 		for (let i=0; i<totalVoices; i++) {
@@ -191,7 +200,7 @@ async function GMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, mon
 	// gme_delete
 	// FS delete file
 	GMEend() /* just gme_delete without args */  // it doesn't work
-	FS.unlink("/home/web_user/input"); /*delete file*/
+	gmeModule.FS.unlink("/home/web_user/input"); /*delete file*/
 	console.log('GMEgenSamples finished. MusRec:')
 	console.log(MusRec)
 	return MusRec
@@ -200,6 +209,7 @@ function genGMEbuffers(MusRec, bufferNum, oneMoreRun, mono, totalSamples) {
 	console.log('genGMEbuffers called. bufferNum: '+bufferNum+', oneMoreRun: '+oneMoreRun+', mono: '+mono+', totalSamples: '+totalSamples)
 	console.log('genGMEbuffers MusRec:')
 	console.log(MusRec)
+	const playMus=gmeModule.cwrap("playMus", "number", null) // the playMus function generates samples when it is run.
 	if (mono===false) { // stereo
 		var addBufferToMusRec=function(MusRec, bufPtr, curBuffer, limiter){
 			//console.log('function expression addBufferToMusRec (stereo) called. bufPtr: '+bufPtr+', curBuffer: '+curBuffer+', limiter: '+limiter);
@@ -223,7 +233,7 @@ function genGMEbuffers(MusRec, bufferNum, oneMoreRun, mono, totalSamples) {
 function addBufferToSampleArray(SampleArray /* Float32Array */, bufPtr, curBuffer/* integer, the number of whole buffers that have been generated thus far */, limiter, channel=0) { // add to the input Float32Array in place
 	//console.log('addBufferToSampleArray called. bufPtr: '+bufPtr+', curBuffer: '+curBuffer+', limiter: '+limiter+', channel: '+channel)
 	for(let i=0; i*2/*numChannels*/<limiter/*number of int16 samples*/; i++){
-		SampleArray[i+curBuffer*BUFFERSIZE / 2/*numChannels*/]= Module.getValue(bufPtr + (i * 2/*bytes per sample*/) * 2/*numChannels*/ + channel * 2/*bytes per sample*/, 'i16') / INT16_MAX /* convert int16 to float*/
+		SampleArray[i+curBuffer*BUFFERSIZE / 2/*numChannels*/]= gmeModule.getValue(bufPtr + (i * 2/*bytes per sample*/) * 2/*numChannels*/ + channel * 2/*bytes per sample*/, 'i16') / INT16_MAX /* convert int16 to float*/
 	}
 }
 function workerGMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, monobool, data, tracknum) {
@@ -236,7 +246,8 @@ function workerGMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, mon
 	console.log('workerGMEgenSamples data:')
 	console.log(data)
 	return new Promise(function(resolve, reject) {
-		const gmeWorker= new Worker("gme-worker.js");
+		const gmeWorker = new Worker("gme-worker.js");
+		console.log('worker created');
 		gmeWorker.addEventListener("message", function(e){
 			console.log("message received from gmeWorker")
 			gmeWorker.terminate();
@@ -244,6 +255,7 @@ function workerGMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, mon
 			resolve(e.data) // MusRec
 		}, {once:true})
 		gmeWorker.postMessage([settings, totalSamples, totalVoices, VoiceDict, monobool, data, tracknum])
+		console.log('message posted to worker')
 	})
 }
 
@@ -349,14 +361,14 @@ function generateWavAndDownload(MusOutput, name, monobool) {
 	console.log(PCMdata[0])
 	if (!monobool) {PCMdata[1]=MusOutput.getChannelData(1)} // right
 	const inputRawArguments=['-t', 'raw', '-L', "-r", "44100", "-e", "floating-point", "-b", "32", "-c", "1"/*, "input1.raw"*/]
-	var arguments= monobool ? [] : ['-M']
-	arguments=arguments.concat(inputRawArguments, "input1.raw")
-	if (!monobool) {arguments=arguments.concat(inputRawArguments, "input2.raw")}
-	const outputWavArguments=['-e', 'signed-integer', '-b', '16', '-c'] // we convert back to 16bit to save space. the samples generated by gme were originally 16bit
-	arguments=arguments.concat(outputWavArguments, monobool ? '1' : '2', 'output.wav')
-	console.log(arguments.join(' '))
+	var soxArguments= monobool ? [] : ['-M']
+	soxArguments=soxArguments.concat(inputRawsoxArguments, "input1.raw")
+	if (!monobool) {soxArguments=soxArguments.concat(inputRawsoxArguments, "input2.raw")}
+	const outputWavsoxArguments=['-e', 'signed-integer', '-b', '16', '-c'] // we convert back to 16bit to save space. the samples generated by gme were originally 16bit
+	soxArguments=soxArguments.concat(outputWavsoxArguments, monobool ? '1' : '2', 'output.wav')
+	console.log(soxArguments.join(' '))
 	var inputmodule={
-		arguments: arguments,
+		arguments: soxArguments,
 		preRun: () => {
 			inputmodule.FS.writeFile("input1.raw", new Uint8Array(PCMdata[0].buffer/*Returns the ArrayBuffer referenced by the typed array.*/));
 			// Emscripten FS.writeFile only functions properly with Uint8Arrays.
