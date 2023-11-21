@@ -1,5 +1,15 @@
-// to do: test on mobile and old laptop; create a page listing all Voice names for all possible chips; check accuracy of test music; give the user an example of a DynamicsCompressorNode they can use on .ay music to make it sound better. (threshold should be -15?). check out gme_enable_accuracy
-// I've given up on figuring out exactly how fast beepola's output is
+// to do: add features to support a whole chiptune app, like fade, adding loopNum to gmeplay, changing length to playLength, MAKING IT POSSIBLE TO RUN gmeplay AGAIN WITHOUT RELOADING THE PAGE, etc. create a page listing all Voice names for all possible chips, then remove code that prints voice names every time setupMusStereo is run; rename the c function setupMusStereo to setupMus; check accuracy of test music; give the user an example of a DynamicsCompressorNode they can use on .ay music to make it sound better volume-wise (threshold should be -15?); figure out an EQ to make .ay beeper music sound more like Beepola (by this I mean the louder 'cymbal' click drums). check out gme_enable_accuracy. fix how panning works when panning is set for a channel that isn't used in the song.
+// order for rewritten gmeplay:
+// gmeplay(chiptuneFile, tracknum)
+// if the chiptuneFile can contain multiple tracks
+// 		don't delete the emulator after samples for the current track have finished rendering.
+// 		gmeplay(chiptuneFile, tracknum)
+// 		if this is the same file
+// 			reuse the emulator and file in the c memory
+//  	else
+//  		delete the emulator
+// else
+// 		delete the emulator after samples for the current track have finished rendering.
 /*
 NOTE ON panningObject AND THE N163 AND FAMISTUDIO
 If you make a song in famistudio while only using some of the 8 Wave channels, the channels used in the exported nsf may be different. For example, a song that uses only two wave channels will have Wave 1 and Wave 2 mapped to Wave 8 and Wave 7 respectively when exported to nsf.
@@ -16,26 +26,14 @@ If you make a song in famistudio while only using some of the 8 Wave channels, t
 // to understand the code, you should read about the JavaScript Web Audio API, Emscripten, ternary operators, Web Workers, Promises. Please let me know if there are any prerequisites I missed.
 
 //const gmeModule=await createGMEmodule()
-var GMEend;
-var gmeModule;
-if (typeof window === 'object') { // web browser window
-	createGMEmodule().then((result) => {
-		gmeModule=result
-		GMEend=gmeModule.cwrap("GMEend", "number", null)
-		console.log('gmeModule ready')
-	})
-}
-
 const INT16_MAX = 65535;
 const SAMPLERATE = 44100;
-const BUFFERSIZE = 2048;
-const SystemMonoList=[
-	"Nintendo NES", // the name that gme uses
-	"Atari XL",
-	"ZX Spectrum",
-	"MSX" // gme can only play PSG and SCC, which are mono
-]
-const gme_info_only = -1
+var prevChiptuneFileName="Empty";
+var prevPanning=false;
+var gmeModule="Empty";
+var generatePCMfileAndReturnInfo="Empty";
+var prevWorker=false;
+// please be consistent with worker use
 
 function gmeplay(input, tracknum, settings) {
 /* settings contains loop (loopStart (milliseconds), loopEnd), length (never used with LoopObject), panningObject, worker (boolean), speed: float (0.5 is half speed. 1 is regular, etc. affects pitch) */
@@ -43,11 +41,10 @@ function gmeplay(input, tracknum, settings) {
 	internalGMEplay(input, tracknum, settings, false)
 }
 function gmeDownload(input, tracknum, settings) {
-/* settings contains loop (loopStart (milliseconds), loopEnd, loopNum), length (never used with LoopObject), panningObject, worker (boolean) */
-// THIS FUNCTION IS NOT FINISHED
+/* settings contains loop (loopStart (milliseconds), loopEnd, loopNum), length (never used with LoopObject), panningObject, worker (boolean), onceInPage (boolean) */
 	internalGMEplay(input, tracknum, settings, true)
 }
-function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
+async function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 	console.log('internalGMEplay called. tracknum: '+tracknum+', wav: '+wav)
 	console.log('internalGMEplay input:')
 	console.log(input)
@@ -58,7 +55,8 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 	
 	const filebool=(typeof input === "object")
 	console.log("filebool: "+filebool)
-	if ( filebool ? (/*file*/ input.name.includes(".vgz")) : (/*url*/ input.includes(".vgz")) ) {
+	var chiptuneFileName= filebool ? input.name : input;
+	if ( chiptuneFileName.includes(".vgz") ) {
 		if (pako) {
 			var vgzbool=true
 		} else {
@@ -66,17 +64,44 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 			return
 		}
 	}
+	if (gmeModule==="Empty") {gmeModule=await createGMEmodule();} // to do: change all 'then' to 'await'
 	if (!settings.speed) {settings.speed=1}
+	curPanningBool=settings.panning ? true : false;
+	if ( (chiptuneFileName != prevChiptuneFileName && prevChiptuneFileName != "Empty") || (curPanningBool != prevPanning && prevChiptuneFileName != "Empty") ) {var diffEmu=true} else {var diffEmu=false}
 	const getFunction= filebool ? getFile : getURL // placing a function inside a variable; when the variable is called with parentheses, it executes whatever function is stored inside.
 	getFunction(input, vgzbool ? vgzbool : undefined).then((data) => {
 		gmeModule.FS.writeFile('/home/web_user/input', data); // don't use {flags:"r"}
-		// there is no reason to not run setupMusStereo in this function
-		var musLength=gmeModule.ccall( // length of the song as defined in the file's metadata
-			"setupMusStereo", // Sets up everything needed to play music in the c code; Also returns music length.
-			"number",
-			["number", "number"],
-			[tracknum/* track number */, (settings.worker && !settings.panning) ? gme_info_only : SAMPLERATE/settings.speed] // gme_info_only does not allow getting total voices and voice names
-		) / settings.speed
+		var speed=Math.round(settings.speed * 100)
+		if (speed > 255) {
+			speed=255
+		} else if (speed < 1) {
+			speed=1
+		}
+		if (settings.onceInPage) {
+			var info=gmeModule.ccall('generatePCMfileAndReturnInfo', 'string', ['number', 'number', 'boolean', 'boolean', 'boolean'], [tracknum, speed, diffEmu, curPanningBool, settings.onceInPage])
+		} else {
+			if (generatePCMfileAndReturnInfo==="Empty") {
+				generatePCMfileAndReturnInfo=gmeModule.cwrap('generatePCMfileAndReturnInfo', 'string', ['number', 'number', 'boolean', 'boolean', 'boolean']);
+			}
+			var info=generatePCMfileAndReturnInfo([tracknum, speed, diffEmu, curPanningBool, settings.onceInPage])
+		}
+		// get pcm file from c to JS
+		// to do: put generatePCMfileAndReturnInfo inside an async function. Update worker functionality
+		/*
+		info= await generatePCMfileAndReturnInfo()
+		
+		async function generatePCMfileAndReturnInfo(tracknum, speed, diffEmu, curPanningBool, settings) {
+			if (settings.worker) {
+				// start worker. worker stays active unless onceInPage is true.
+			} else {
+				c_generatePCMfileAndReturnInfo=gmeModule.cwrap('generatePCMfileAndReturnInfo', 'string', ['number', 'number', 'boolean', 'boolean', 'boolean']);
+			}
+		}
+		*/
+		
+		// do web audio stuff here
+		
+		// most of the stuff below will be scrapped
 		// if the user defined a loopEnd or a length, overwrite the length obtained from the file with the user's
 		if (settings.loop) {if (settings.loop.loopEnd) {musLength=settings.loop.loopEnd}}
 		else if (settings.length) {musLength=settings.length};
@@ -143,6 +168,10 @@ function internalGMEplay(input, tracknum=0, settings={}, wav=false) {
 		})
 		
 	})
+	
+	// end
+	prevChiptuneFileName=chiptuneFileName;
+	if (settings.panning) {prevPanning=true} else {prevPanning=false}
 }
 
 async function GMEgenSamples(settings, totalSamples, totalVoices, VoiceDict, monobool) {

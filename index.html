@@ -4,10 +4,10 @@
 <title>Web-GME-Player Demo</title>
 <meta name=color-scheme content="dark light">
 <meta name=viewport content=width=device-width,initial-scale=1.0>
-<script src=pako/pako.min.js></script>
+<!--<script src=pako/pako.min.js></script>-->
 <script src=sox/sox.js></script>
 <script src=Web-GME-Player.js></script> <!-- remember to set the right script -->
-<script src=gmeplay-function.js></script>
+<script src=web-gme-functions.js></script>
 </head>
 <body>
 <label for="song-select">Choose a song:</label>
@@ -40,6 +40,9 @@
 <option>DMG-BRBJ-JPN.gbs</option>
 <option>Gradius 2 (MSX)(1987)(Konami).kss</option> <!--62-->
 <option>Blaster Master (Sunsoft).nsf</option>
+<option>wandersongDogfairy2a03test.nsfe</option>
+<option>katamaritaino-intro.nsfe</option>
+<option>wandersongDogfairy8N163test.nsfe</option>
 </select>
 <br>
 <label for="song-select-file">Upload a song:</label>
@@ -96,16 +99,16 @@ var loopEndInput=document.getElementById("loopEnd")
 var workerRadio=document.getElementById("workerRadio")
 var fileInput=document.getElementById("song-select-file")
 var speedInput=document.getElementById("speed")
-gmeplaybut.addEventListener("click",myclick,{once:true})
+gmeplaybut.addEventListener("click",myclick)
 wavButton=document.getElementById('wavbutton')
-wavButton.addEventListener("click",myclick,{once:true})
+wavButton.addEventListener("click",myclick)
 function myclick(){
 	if (this.innerHTML==='Play') {
 		var playBool=true
-		wavButton.setAttribute('disabled', '')
+		//wavButton.setAttribute('disabled', '')
 	} else {
 		var playBool=false
-		gmeplaybut.setAttribute('disabled', '')
+		//gmeplaybut.setAttribute('disabled', '')
 	}
 	this.innerHTML="Playing..."
 	console.log(LoopObjectRadio.checked)
